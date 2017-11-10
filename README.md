@@ -1,0 +1,2 @@
+# hobo
+Vagrant on Rails
