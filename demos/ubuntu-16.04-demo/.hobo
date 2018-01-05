@@ -1,0 +1,9 @@
+{
+    "Name": "ubuntu-16.04-demo",
+    "Boxcar": {
+        "Name": "ubuntu-16.04",
+        "Version": "1.0.0",
+        "Url": "https://github.com/msolo/hobo/releases/download/v1.0.0-beta/ubuntu-16.04-v1.0.0.vmwarevm.txz",
+        "Sha256": "443be5a0ed09ffc8bff1f84d9d55bcde28cdf28e7a85e242e1a123086bbdd045"
+    }
+}
