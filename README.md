@@ -5,6 +5,18 @@ Hobo is a simple VM template manager for VMWare Fusion. It works for OS X/Linux 
 
 Hobo is intentionally simple and designed to give you a reliable VM without network latency. It doesn't try to pretend to be anything more sophisticated than that. There are no special mounting/sharing options and only a simple rootfs upgrade path.
 
+# TL;DR - Getting Started
+```bash
+git clone https://github.com/msolo/hobo
+export HOBO_TOP=$(pwd)/hobo
+cd $HOBO_TOP
+go build
+cd $HOBO_TOP/demos/ubuntu-16.04-demo # This contains a .hobo file that configures the demo vm.
+$HOBO_TOP/hobo start # This will fetch a 200MB vm image from Github.
+$HOBO_TOP/hobo ssh # Take a look inside the vm.
+$HOBO_TOP/hobo rm # The will shutdown the vm and remove any associated storage - you will be prompted.
+```
+
 # Boxcars
 
 A boxcar is just a tarball of vmwarevm directory. It should follow some basic conventions to keep things flexible and useful.
@@ -61,8 +73,17 @@ shasum -a 256 ${boxcar_name}.vmwarevm.tgz | awk '{print $1}' > ${boxcar_name}.vm
 ```
 
 ### Compressing further
+Recompressing can save quite a bit of transfer, particularly on vm disks, but the compression gets expensive while iterating. `make-boxcar` just uses gzip for its "cheap and cheerful" universal charm and nostalgic appeal.
 ```
 gunzip -k -c ${boxcar_name}.vmwarevm.tgz | pixz ${boxcar_name}.vmwarevm.txz
+```
+
+For example, looking at our demo installation of Ubuntu 16.04 we can see a big difference:
+```
+-rw-r--r--   1 msolo  msolo  1162854400 Jan  4 22:37 ubuntu-16.04.vmwarevm.tar
+-rw-r--r--   1 msolo  msolo   322909332 Jan  5 00:22 ubuntu-16.04.vmwarevm.tgz
+-rw-r--r--   1 msolo  msolo   284481015 Jan  5 00:23 ubuntu-16.04.vmwarevm.tbz
+-rw-r--r--   1 msolo  msolo   218756348 Jan  5 00:25 ubuntu-16.04.vmwarevm.txz
 ```
 
 ## Create A VM Config
