@@ -131,15 +131,14 @@ func newLocalConfigFromFile(fname string) (*localConfig, error) {
 			HoboDir:                "$HOME/.hobo.d",
 		},
 	}
-	if fname == "" {
-		return lc, nil
-	}
-	data, err := ioutil.ReadFile(fname)
-	if err != nil {
-		return nil, err
-	}
-	if err = json.Unmarshal(data, lc); err != nil {
-		return nil, err
+	if fname != "" {
+		data, err := ioutil.ReadFile(fname)
+		if err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(data, lc); err != nil {
+			return nil, err
+		}
 	}
 	lc.AppConfig.HoboDir = os.ExpandEnv(lc.AppConfig.HoboDir)
 	return lc, nil
@@ -991,14 +990,17 @@ func main() {
 		}
 	} else {
 		cfgFname := ""
-		if cmdName != "make-boxcar" {
+		switch cmdName {
+		case "make-boxcar", "ls":
+		default:
 			cfgFname = findConfigFile(*configFile)
-		}
-		cfg, err = newLocalConfigFromFile(cfgFname)
-		if err != nil {
 			if cfgFname == "" {
 				log.Fatalf("fill out a .hobo file")
 			}
+		}
+
+		cfg, err = newLocalConfigFromFile(cfgFname)
+		if err != nil {
 			log.Fatalf("failed reading config: %s", err)
 		}
 	}
