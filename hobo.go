@@ -94,18 +94,6 @@ type boxcar struct {
 	BootstrapCmdLines []string
 }
 
-func newBoxcarFromFile(ac appConfig, fname string) (*boxcar, error) {
-	data, err := ioutil.ReadFile(fname)
-	if err != nil {
-		return nil, err
-	}
-	bxc := &boxcar{}
-	if err = json.Unmarshal(data, bxc); err != nil {
-		return nil, err
-	}
-	return bxc, nil
-}
-
 func (bxc *boxcar) bootstrapBashScript() string {
 	cmdLines := []string{
 		"export HOBO_HOST_USER=" + os.Getenv("LOGNAME"),
@@ -272,6 +260,21 @@ func (vm *instance) getIpAddrFromVmdhcp() (string, error) {
 	}
 }
 
+// FIXME(msolo) do a prefix logger.
+func runVmrun(bin string, args ...string) error {
+	cmd := exec.Command(bin, args...)
+	// vmware missed the memo on how to use stdout/stderr properly.
+	data, err := cmd.CombinedOutput()
+	if err != nil {
+		rc := 0
+		if _, ok := err.(*exec.ExitError); ok {
+			rc = cmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus()
+		}
+		log.Printf("cmd failed: %v rc: %v\nstderr: %s", cmd.Args, rc, data)
+	}
+	return err
+}
+
 func runCmd(bin string, args ...string) error {
 	cmd := exec.Command(bin, args...)
 	_, err := cmd.CombinedOutput()
@@ -370,8 +373,21 @@ func (vm *instance) sshCmdArgs() ([]string, error) {
 }
 
 func (vm *instance) start() error {
-	return runCmd(vm.vmConfig.appConfig.VmrunBinaryPath,
+	return runVmrun(vm.vmConfig.appConfig.VmrunBinaryPath,
 		"start", vm.vmConfig.vmxFile, "nogui")
+}
+
+func (vm *instance) isRunning() (running bool, err error) {
+	fnames, err := getRunningVmxPaths(&vm.vmConfig.appConfig)
+	if err != nil {
+		return running, err
+	}
+	for _, fname := range fnames {
+		if fname == vm.vmConfig.vmxFile {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (vm *instance) stop(hard bool) error {
@@ -379,7 +395,7 @@ func (vm *instance) stop(hard bool) error {
 	if hard {
 		args = append(args, "hard")
 	}
-	return runCmd(vm.vmConfig.appConfig.VmrunBinaryPath, args...)
+	return runVmrun(vm.vmConfig.appConfig.VmrunBinaryPath, args...)
 }
 
 func (vm *instance) writeConfig() error {
@@ -402,20 +418,32 @@ func (vm *instance) readConfig() error {
 	return json.Unmarshal(data, &vm.vmConfig)
 }
 
-func cmdLs(ctx context.Context, cfg *localConfig, args []string) {
-	cmd := exec.Command(cfg.AppConfig.VmrunBinaryPath,
+func getRunningVmxPaths(ac *appConfig) ([]string, error) {
+	cmd := exec.Command(ac.VmrunBinaryPath,
 		"-T", "fusion", "list")
 	data, err := cmd.Output()
 	if err != nil {
 		logCmdError(cmd, err)
-		log.Fatalf("failed reading vms: %v", err)
+		return nil, err
 	}
+	fnames := make([]string, 0, 4)
 	for _, line := range strings.Split(string(bytes.TrimSpace(data)), "\n") {
 		if strings.HasSuffix(line, ".vmx") {
-			ext := path.Ext(line)
-			name := path.Base(line[:len(line)-len(ext)])
-			println(name, line)
+			fnames = append(fnames, line)
 		}
+	}
+	return fnames, nil
+}
+
+func cmdLs(ctx context.Context, cfg *localConfig, args []string) {
+	fnames, err := getRunningVmxPaths(&cfg.AppConfig)
+	if err != nil {
+		log.Fatalf("failed reading vms: %v", err)
+	}
+	for _, fname := range fnames {
+		ext := path.Ext(fname)
+		name := path.Base(fname[:len(fname)-len(ext)])
+		println(name, fname)
 	}
 }
 
@@ -526,8 +554,18 @@ func cmdRm(ctx context.Context, cfg *localConfig, args []string) {
 		log.Fatalf("aborted: %v", err)
 	}
 
-	if err = vm.stop(true); err != nil {
+	running, err := vm.isRunning()
+	if err != nil {
 		log.Fatalf("failed remove: %s", err)
+	}
+	if running {
+		stopErr := vm.stop(true)
+		running, err := vm.isRunning()
+		if running {
+			log.Fatalf("failed remove: %s", stopErr)
+		} else if err != nil {
+			log.Fatalf("failed remove: %s", err)
+		}
 	}
 
 	if err = os.RemoveAll(vm.vmConfig.vmPath); err != nil {
@@ -624,8 +662,9 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 	if err != nil {
 		log.Fatalf("failed creating config: %s", err)
 	}
+	vm.vmConfig.boxcar = cfg.Boxcar
 
-	// We write the config once we are completely bootstrapped.
+	// We only write the config once we are completely bootstrapped.
 	if _, err := os.Stat(vm.vmConfig.configFile); err == nil {
 		log.Fatalf("cannot overwrite existing vm: %s", vm.vmConfig.configFile)
 	}
@@ -681,7 +720,7 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 	}
 
 	log.Printf("Cloning vm %s", archive)
-	err = runCmd(cfg.AppConfig.VmrunBinaryPath,
+	err = runVmrun(cfg.AppConfig.VmrunBinaryPath,
 		"-T", "fusion",
 		"clone", boxcarVmxFile, vm.vmConfig.vmxFile,
 		"full",
@@ -690,7 +729,6 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 		log.Fatalf("failed cloning: %s", err)
 	}
 
-	// FIXME(msolo) write out *.vmwarevm/hobo/config.json file to indicate unpacking is done?
 	if !vm.vmConfig.TimeBootstrapped.IsZero() {
 		log.Fatalf("failed bootstrap: already bootstrapped")
 	}
@@ -771,8 +809,8 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 		err = vm.writeConfig()
 	} else {
 		logCmdError(cmd, err)
-		log.Printf("bootstrap out: %s", out)
 	}
+	log.Printf("bootstrap out:\n%s", out)
 
 	if err != nil {
 		log.Fatalf("failed bootstrap: %v", err)
@@ -850,11 +888,11 @@ func cmdMakeBoxcar(ctx context.Context, cfg *localConfig, args []string) {
 		log.Fatalf("failed: vmwarevm directory must have a root.vmdk: %s", rootVmdk)
 	}
 
-	err := runCmd(cfg.AppConfig.VmrunBinaryPath, "-T", "fusion", "start", vmwarevmPath, "nogui")
+	err := runVmrun(cfg.AppConfig.VmrunBinaryPath, "-T", "fusion", "start", vmwarevmPath, "nogui")
 	if err != nil {
 		log.Fatalf("failed starting boxcar %s: %s", rootVmdk, err)
 	}
-	err = runCmd(cfg.AppConfig.VmrunBinaryPath, "-T", "fusion", "stop", vmwarevmPath, "hard")
+	err = runVmrun(cfg.AppConfig.VmrunBinaryPath, "-T", "fusion", "stop", vmwarevmPath, "hard")
 	if err != nil {
 		log.Fatalf("failed stopping boxcar %s: %s", rootVmdk, err)
 	}
@@ -881,11 +919,11 @@ func cmdMakeBoxcar(ctx context.Context, cfg *localConfig, args []string) {
 	}
 
 	log.Printf("Shrinking %s", rootVmdk)
-	err = runCmd(cfg.AppConfig.VdiskManagerBinaryPath, "-d", rootVmdk)
+	err = runVmrun(cfg.AppConfig.VdiskManagerBinaryPath, "-d", rootVmdk)
 	if err != nil {
 		log.Fatalf("failed shrinking %s: %s", rootVmdk, err)
 	}
-	err = runCmd(cfg.AppConfig.VdiskManagerBinaryPath, "-k", rootVmdk)
+	err = runVmrun(cfg.AppConfig.VdiskManagerBinaryPath, "-k", rootVmdk)
 	if err != nil {
 		log.Fatalf("failed shrinking %s: %s", rootVmdk, err)
 	}
