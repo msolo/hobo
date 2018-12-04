@@ -351,25 +351,22 @@ func (vm *instance) sshConfigMap() map[string]string {
 	}
 }
 
-func (vm *instance) sshConfigArgs() ([]string, error) {
+func (vm *instance) sshConfigArgs() []string {
 	cfgMap := vm.sshConfigMap()
 	args := make([]string, 0, len(cfgMap))
 	for k, v := range cfgMap {
 		args = append(args, "-o"+k+"="+v)
 	}
 	sort.Strings(args)
-	return args, nil
+	return args
 }
 
-func (vm *instance) sshCmdArgs() ([]string, error) {
-	cfgArgs, err := vm.sshConfigArgs()
-	if err != nil {
-		return nil, err
-	}
+func (vm *instance) sshCmdArgs() []string {
+	cfgArgs := vm.sshConfigArgs()
 	args := make([]string, 0, 32)
 	args = append(args, "ssh", "-F", "/dev/null")
 	args = append(args, cfgArgs...)
-	return args, nil
+	return args
 }
 
 func (vm *instance) start() error {
@@ -772,10 +769,7 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 		}
 	}
 
-	sshCmdArgs, err := vm.sshCmdArgs()
-	if err != nil {
-		log.Fatalf("failed bootstrap: %v", err)
-	}
+	sshCmdArgs := vm.sshCmdArgs()
 
 	initialSshCmdArgs := make([]string, len(sshCmdArgs))
 	copy(initialSshCmdArgs, sshCmdArgs)
@@ -801,7 +795,6 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 	log.Printf("Bootstrapping guest on %s", ipAddr)
 	cmd := exec.Command("/usr/bin/ssh", sshCmdArgs[1:]...)
 	out, err := cmd.Output()
-	// FIXME(msolo) Log cmd errors correctly - there is insufficient context by default.
 	outlines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if strings.TrimSpace(outlines[len(outlines)-1]) == "hobo-bootstrap-ok" {
 		vm.vmConfig.TimeBootstrapped = time.Now()
@@ -823,7 +816,7 @@ func cmdIpAddr(ctx context.Context, cfg *localConfig, args []string) {
 	if err != nil {
 		log.Fatalf("failed reading config: %v", err)
 	}
-	// TODO(msolo) this won't work if the vm has not started up at least once.
+	// FIXME(msolo) this won't work if the vm has not started up at least once.
 	ip, err := vm.getIpAddr()
 	if err != nil {
 		log.Fatalf("failed finding ip addr: %v", err)
@@ -836,10 +829,7 @@ func cmdSsh(ctx context.Context, cfg *localConfig, args []string) {
 	if err != nil {
 		log.Fatalf("failed reading config: %v", err)
 	}
-	sshArgs, err := vm.sshCmdArgs()
-	if err != nil {
-		log.Fatalf("failed reading config: %v", err)
-	}
+	sshArgs := vm.sshCmdArgs()
 	ip, err := vm.getIpAddr()
 	if err != nil {
 		log.Fatalf("failed finding ip addr: %v", err)
