@@ -12,7 +12,7 @@ type Command struct {
 	Name      string
 	UsageLine string
 	UsageLong string
-	Run       func(ctx *context.Context, cmd *Command, cfg interface{}, args []string)
+	Run       func(ctx context.Context, cmd *Command, args []string)
 	Flags     []Flag
 	Args      complete.Predictor
 }

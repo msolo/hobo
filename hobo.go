@@ -434,7 +434,8 @@ func getRunningVmxPaths(ac *appConfig) ([]string, error) {
 	return fnames, nil
 }
 
-func cmdLs(ctx context.Context, cfg *localConfig, args []string) {
+func runLs(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
 	fnames, err := getRunningVmxPaths(&cfg.AppConfig)
 	if err != nil {
 		log.Fatalf("failed reading vms: %v", err)
@@ -480,8 +481,8 @@ func runStart(ctx context.Context, cmd *Command, args []string) {
 	cfg := ctxCfg(ctx)
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if os.IsNotExist(err) {
-		cmdFetch(ctx, cfg, args)
-		cmdClone(ctx, cfg, args)
+		runFetch(ctx, cmd, args)
+		runClone(ctx, cmd, args)
 		vm, err = readInstanceForName(cfg.AppConfig, cfg.Name)
 	}
 	if err != nil {
@@ -507,9 +508,10 @@ func runStart(ctx context.Context, cmd *Command, args []string) {
 	}
 }
 
-func cmdStop(ctx context.Context, cfg *localConfig, args []string) {
-	flags := flag.NewFlagSet("stop", flag.ExitOnError)
-	hard := flags.Bool("force", false, "Agressively stop the vm.")
+func runStop(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
+	var hard bool
+	flags := cmd.BindFlagSet(BindFlag{"force", &hard})
 	err := flags.Parse(args)
 	if err != nil {
 		log.Fatalf("failed: %v", err)
@@ -520,12 +522,13 @@ func cmdStop(ctx context.Context, cfg *localConfig, args []string) {
 		log.Fatalf("failed reading config: %v", err)
 	}
 
-	if err = vm.stop(*hard); err != nil {
+	if err = vm.stop(hard); err != nil {
 		log.Fatalf("failed stop: %s", err)
 	}
 }
 
-func cmdSuspend(ctx context.Context, cfg *localConfig, args []string) {
+func runSuspend(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
 		log.Fatalf("failed reading config: %v", err)
@@ -552,7 +555,8 @@ func prompt(msg, affirmative string) error {
 	return nil
 }
 
-func cmdRm(ctx context.Context, cfg *localConfig, args []string) {
+func runRm(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
 		log.Fatalf("failed reading config: %v", err)
@@ -586,7 +590,9 @@ func archivePath(ac appConfig, bxc boxcar) string {
 }
 
 // Fetch a boxcar url and store it down to our local storage.
-func cmdFetch(ctx context.Context, cfg *localConfig, args []string) {
+func runFetch(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
+
 	archive := archivePath(cfg.AppConfig, cfg.Boxcar)
 	tmpArchivePath := path.Join(path.Dir(archive),
 		fmt.Sprintf(".%s-%d", path.Base(archive), time.Now().UnixNano()))
@@ -665,7 +671,9 @@ func cmdFetch(ctx context.Context, cfg *localConfig, args []string) {
 // For now a clone is simply unpacking a boxcar archive into a new directory.
 // This might be less efficient if you have many of the same type of vm running,
 // but I suspect that is uncommon and likely to have other problems.
-func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
+func runClone(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
+
 	vm, err := newInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
 		log.Fatalf("failed creating config: %s", err)
@@ -804,15 +812,15 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 	sshCmdArgs = append(sshCmdArgs, "-i", vm.vmConfig.sshId, "hobo@"+ipAddr, bashCmd)
 
 	log.Printf("Bootstrapping guest on %s", ipAddr)
-	cmd := exec.Command("/usr/bin/ssh", sshCmdArgs[1:]...)
-	out, err := cmd.Output()
+	execCmd := exec.Command("/usr/bin/ssh", sshCmdArgs[1:]...)
+	out, err := execCmd.Output()
 	outlines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if strings.TrimSpace(outlines[len(outlines)-1]) == "hobo-bootstrap-ok" {
 		vm.vmConfig.TimeBootstrapped = time.Now()
 		vm.vmConfig.IpAddr = ipAddr
 		err = vm.writeConfig()
 	} else {
-		logCmdError(cmd, err)
+		logCmdError(execCmd, err)
 	}
 	log.Printf("bootstrap out:\n%s", out)
 
@@ -822,7 +830,9 @@ func cmdClone(ctx context.Context, cfg *localConfig, args []string) {
 	log.Printf("Instance running guest on %s", ipAddr)
 }
 
-func cmdIpAddr(ctx context.Context, cfg *localConfig, args []string) {
+func runIpAddr(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
+
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
 		log.Fatalf("failed reading config: %v", err)
@@ -835,7 +845,9 @@ func cmdIpAddr(ctx context.Context, cfg *localConfig, args []string) {
 	println(ip)
 }
 
-func cmdSsh(ctx context.Context, cfg *localConfig, args []string) {
+func runSsh(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
+
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
 		log.Fatalf("failed reading config: %v", err)
@@ -849,7 +861,9 @@ func cmdSsh(ctx context.Context, cfg *localConfig, args []string) {
 	syscall.Exec("/usr/bin/ssh", sshArgs, os.Environ())
 }
 
-func cmdSshConfig(ctx context.Context, cfg *localConfig, args []string) {
+func runSshConfig(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
+
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
 		log.Fatalf("failed reading config: %v", err)
@@ -876,7 +890,9 @@ func cmdSshConfig(ctx context.Context, cfg *localConfig, args []string) {
 	println(strings.Join(lines, "\n"))
 }
 
-func cmdMakeBoxcar(ctx context.Context, cfg *localConfig, args []string) {
+func runMakeBoxcar(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
+
 	if len(args) != 1 {
 		log.Fatalf("failed: make-boxcar requires a path to a vmwarevm directory")
 	}
@@ -1031,7 +1047,7 @@ Start a VM.
 
 var CmdStop = &Command{
 	Name:      "stop",
-	Run:       runStart,
+	Run:       runStop,
 	UsageLine: "hobo stop",
 	UsageLong: `
 Stop a VM.
@@ -1114,42 +1130,7 @@ Create a new boxcar archive.
 	Args: complete.PredictFiles("*.vmwarevm"),
 }
 
-func runStart(cmd *Command, cfg interface{}, args []string) {
-	cmdStart(context.Background(), cfg.(*localConfig), args)
-}
-func runStop(cmd *Command, cfg interface{}, args []string) {
-	cmdStop(context.Background(), cfg.(*localConfig), args)
-}
-func runSuspend(cmd *Command, cfg interface{}, args []string) {
-	cmdSuspend(context.Background(), cfg.(*localConfig), args)
-}
-
-func runIpAddr(cmd *Command, cfg interface{}, args []string) {
-	cmdIpAddr(context.Background(), cfg.(*localConfig), args)
-}
-func runSsh(cmd *Command, cfg interface{}, args []string) {
-	cmdSsh(context.Background(), cfg.(*localConfig), args)
-}
-func runSshConfig(cmd *Command, cfg interface{}, args []string) {
-	cmdSshConfig(context.Background(), cfg.(*localConfig), args)
-}
-
-func runLs(cmd *Command, cfg interface{}, args []string) {
-	cmdLs(context.Background(), cfg.(*localConfig), args)
-}
-func runRm(cmd *Command, cfg interface{}, args []string) {
-	cmdRm(context.Background(), cfg.(*localConfig), args)
-}
-
-func runFetch(cmd *Command, cfg interface{}, args []string) {
-	cmdFetch(context.Background(), cfg.(*localConfig), args)
-}
-
-func runMakeBoxcar(cmd *Command, cfg interface{}, args []string) {
-	cmdMakeBoxcar(context.Background(), cfg.(*localConfig), args)
-}
-
-func runBase(cmd *Command, cfg interface{}, args []string) {
+func runBase(ctx context.Context, cmd *Command, args []string) {
 	println("base")
 }
 
@@ -1163,8 +1144,8 @@ func main() {
 		subCommands[cmd.Name] = cmd.CompleteCommand()
 	}
 	hobo := complete.Command{
-		Sub:         subCommands,
-		GlobalFlags: CmdBase.CompleteFlags(),
+		Sub:   subCommands,
+		Flags: CmdBase.CompleteFlags(),
 	}
 	flagSet := CmdBase.BindFlagSet(BindFlag{"timeout", &timeout},
 		BindFlag{"data-dir", &hoboDir},
@@ -1218,9 +1199,10 @@ func main() {
 	if timeout > 0 {
 		ctx, _ = context.WithTimeout(ctx, timeout)
 	}
+	ctx = context.WithValue(ctx, localConfigKey, cfg)
 
 	if cmd, ok := CommandMap[cmdName]; ok {
-		cmd.Run(cmd, cfg, args)
+		cmd.Run(ctx, cmd, args)
 	} else {
 		flag.Usage()
 		os.Exit(1)
