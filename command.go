@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/posener/complete"
@@ -14,6 +16,7 @@ type Command struct {
 	UsageLong string
 	Run       func(ctx context.Context, cmd *Command, args []string)
 	Flags     []Flag
+	flagSet   *flag.FlagSet
 	Args      complete.Predictor
 }
 
@@ -26,10 +29,10 @@ type Flag struct {
 }
 
 const (
-	FlagTypeInt      = 1
-	FlagTypeString   = 2
-	FlagTypeDuration = 3
-	FlagTypeBool     = 4
+	FlagTypeInt = iota
+	FlagTypeString
+	FlagTypeDuration
+	FlagTypeBool
 )
 
 type BindFlag struct {
@@ -38,7 +41,15 @@ type BindFlag struct {
 }
 
 func (cmd *Command) BindFlagSet(bindFlags ...BindFlag) *flag.FlagSet {
+	if cmd.flagSet != nil {
+		panic("flag set already bound for command: " + cmd.Name)
+	}
 	fs := flag.NewFlagSet(cmd.Name, flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n  %s\n", cmd.Name, cmd.UsageLine)
+		fmt.Fprintln(os.Stderr, cmd.UsageLong)
+		fs.PrintDefaults()
+	}
 
 	for _, bind := range bindFlags {
 		var fdef *Flag
@@ -62,7 +73,15 @@ func (cmd *Command) BindFlagSet(bindFlags ...BindFlag) *flag.FlagSet {
 			fs.BoolVar(bind.Val.(*bool), fdef.Name, fdef.Default.(bool), fdef.Usage)
 		}
 	}
+	cmd.flagSet = fs
 	return fs
+}
+
+func (cmd *Command) FlagSet() *flag.FlagSet {
+	if cmd.flagSet == nil {
+		cmd.BindFlagSet()
+	}
+	return cmd.flagSet
 }
 
 func (cmd *Command) CompleteFlags() complete.Flags {
@@ -72,9 +91,53 @@ func (cmd *Command) CompleteFlags() complete.Flags {
 	}
 	return cf
 }
+
 func (cmd *Command) CompleteCommand() complete.Command {
 	return complete.Command{
 		Args:  cmd.Args,
 		Flags: cmd.CompleteFlags(),
 	}
+}
+
+func HandleCommands(cmds []*Command) (cmd *Command, args []string) {
+	cmdModeMap := make(map[string]*Command)
+	cmplModeMap := make(complete.Commands)
+	for _, cmd := range cmds {
+		cmdModeMap[cmd.Name] = cmd
+		cmplModeMap[cmd.Name] = cmd.CompleteCommand()
+	}
+
+	cmdMain := cmds[0]
+	cmplMain := complete.Command{
+		Sub:   cmplModeMap,
+		Flags: cmdMain.CompleteFlags(),
+	}
+
+	completer := complete.New(cmdMain.Name, cmplMain)
+	if completer.Complete() {
+		os.Exit(0)
+	}
+
+	flagSet := cmdMain.FlagSet()
+	flagSet.Parse(os.Args[1:])
+
+	exitUsage := func() {
+		flagSet.Usage()
+		os.Exit(1)
+	}
+
+	args = flagSet.Args()
+	cmdName := ""
+	if len(args) > 0 {
+		cmdName = args[0]
+		args = args[1:]
+	}
+
+	if cmd, ok := cmdModeMap[cmdName]; ok {
+		return cmd, args
+	}
+
+	fmt.Fprintf(os.Stderr, "mode provided but not defined: %s\n", cmdName)
+	exitUsage()
+	return
 }
