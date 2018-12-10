@@ -22,6 +22,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/posener/complete"
 )
 
 const (
@@ -466,7 +468,16 @@ func waitForSsh(ctx context.Context, ipAddr string) (ok bool) {
 	return false
 }
 
-func cmdStart(ctx context.Context, cfg *localConfig, args []string) {
+type contextKey string
+
+const localConfigKey = contextKey("localConfig")
+
+func ctxCfg(ctx context.Context) *localConfig {
+	return ctx.Value(localConfigKey).(*localConfig)
+}
+
+func runStart(ctx context.Context, cmd *Command, args []string) {
+	cfg := ctxCfg(ctx)
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if os.IsNotExist(err) {
 		cmdFetch(ctx, cfg, args)
@@ -950,14 +961,8 @@ func cmdMakeBoxcar(ctx context.Context, cfg *localConfig, args []string) {
 	log.Printf("Created %s", fout.Name())
 }
 
-type cmdFunc func(ctx context.Context, cfg *localConfig, args []string)
-
 const (
 	timeFmt = "2006-01-02 15:04:05" // RFC3339 is hard to read at a glance
-)
-
-var (
-	cmdMap map[string]cmdFunc
 )
 
 func findConfigFile(fname string) string {
@@ -971,22 +976,6 @@ func findConfigFile(fname string) string {
 }
 
 func init() {
-	cmdMap = map[string]cmdFunc{
-		"start":   cmdStart,
-		"stop":    cmdStop,
-		"suspend": cmdSuspend,
-
-		"ip-addr":    cmdIpAddr,
-		"ssh":        cmdSsh,
-		"ssh-config": cmdSshConfig,
-
-		"ls": cmdLs,
-		"rm": cmdRm,
-
-		"fetch": cmdFetch,
-
-		"make-boxcar": cmdMakeBoxcar,
-	}
 	log.SetFlags(log.Lshortfile | log.Ltime)
 
 	flag.Usage = func() {
@@ -996,15 +985,202 @@ func init() {
 	}
 }
 
-func main() {
-	timeout := flag.Duration("timeout", 0, "timeout for command execution (0 means unbounded)")
-	hoboDir := flag.String("hobo-dir", "$HOME/.hobo.d", "directory for all hobo vm data")
-	configFile := flag.String("config-file", "./.hobo", "local config file")
+var Commands = []*Command{
+	CmdBase,
+	CmdStart,
+	CmdStop,
+	CmdSuspend,
+	CmdIpAddr,
+	CmdSsh,
+	CmdSshConfig,
+	CmdLs,
+	CmdRm,
+	CmdFetch,
+	CmdMakeBoxcar,
+}
 
-	flag.Parse()
-	args := flag.Args()
+var CommandMap map[string]*Command
+
+func init() {
+	CommandMap = make(map[string]*Command)
+	for _, cmd := range Commands {
+		CommandMap[cmd.Name] = cmd
+	}
+}
+
+var CmdBase = &Command{
+	Name:      "",
+	Run:       runBase,
+	UsageLine: "hobo help",
+	UsageLong: doc,
+	Flags: []Flag{
+		{"timeout", nil, FlagTypeDuration, 0 * time.Millisecond, "timeout for command execution"},
+		{"data-dir", nil, FlagTypeString, "$HOME/.hobo.d", "directory for all hobo vm data"},
+		{"config-file", nil, FlagTypeString, "./.hobo", "local config file"},
+	},
+}
+
+var CmdStart = &Command{
+	Name:      "start",
+	Run:       runStart,
+	UsageLine: "hobo start",
+	UsageLong: `
+Start a VM.
+	`,
+}
+
+var CmdStop = &Command{
+	Name:      "stop",
+	Run:       runStart,
+	UsageLine: "hobo stop",
+	UsageLong: `
+Stop a VM.
+	`,
+	Flags: []Flag{
+		{"force", nil, FlagTypeBool, false, "Aggressively stop the VM."},
+	},
+}
+
+var CmdSuspend = &Command{
+	Name:      "suspend",
+	Run:       runSuspend,
+	UsageLine: "hobo suspend",
+	UsageLong: `
+Suspend a VM.
+	`,
+}
+
+var CmdIpAddr = &Command{
+	Name:      "ip-addr",
+	Run:       runIpAddr,
+	UsageLine: "hobo ip-addr",
+	UsageLong: `
+Return the current IP address for a VM.
+	`,
+}
+
+var CmdSsh = &Command{
+	Name:      "ssh",
+	Run:       runSsh,
+	UsageLine: "hobo ssh",
+	UsageLong: `
+SSH into a VM.
+	`,
+}
+
+var CmdSshConfig = &Command{
+	Name:      "ssh-config",
+	Run:       runSshConfig,
+	UsageLine: "hobo ssh-config",
+	UsageLong: `
+Generate an SSH config clause for a VM.
+	`,
+}
+
+var CmdLs = &Command{
+	Name:      "ls",
+	Run:       runLs,
+	UsageLine: "hobo ls",
+	UsageLong: `
+Show all running VMs.
+	`,
+}
+
+var CmdRm = &Command{
+	Name:      "rm",
+	Run:       runRm,
+	UsageLine: "hobo rm",
+	UsageLong: `
+Destroy a VM and permanently remove all data files.
+	`,
+}
+
+var CmdFetch = &Command{
+	Name:      "fetch",
+	Run:       runFetch,
+	UsageLine: "hobo fetch",
+	UsageLong: `
+Pull down a boxcar archive.
+	`,
+}
+
+var CmdMakeBoxcar = &Command{
+	Name:      "make-boxcar",
+	Run:       runMakeBoxcar,
+	UsageLine: "hobo make-boxcar <boxcar name>.vmwarevm",
+	UsageLong: `
+Create a new boxcar archive.
+	`,
+	Args: complete.PredictFiles("*.vmwarevm"),
+}
+
+func runStart(cmd *Command, cfg interface{}, args []string) {
+	cmdStart(context.Background(), cfg.(*localConfig), args)
+}
+func runStop(cmd *Command, cfg interface{}, args []string) {
+	cmdStop(context.Background(), cfg.(*localConfig), args)
+}
+func runSuspend(cmd *Command, cfg interface{}, args []string) {
+	cmdSuspend(context.Background(), cfg.(*localConfig), args)
+}
+
+func runIpAddr(cmd *Command, cfg interface{}, args []string) {
+	cmdIpAddr(context.Background(), cfg.(*localConfig), args)
+}
+func runSsh(cmd *Command, cfg interface{}, args []string) {
+	cmdSsh(context.Background(), cfg.(*localConfig), args)
+}
+func runSshConfig(cmd *Command, cfg interface{}, args []string) {
+	cmdSshConfig(context.Background(), cfg.(*localConfig), args)
+}
+
+func runLs(cmd *Command, cfg interface{}, args []string) {
+	cmdLs(context.Background(), cfg.(*localConfig), args)
+}
+func runRm(cmd *Command, cfg interface{}, args []string) {
+	cmdRm(context.Background(), cfg.(*localConfig), args)
+}
+
+func runFetch(cmd *Command, cfg interface{}, args []string) {
+	cmdFetch(context.Background(), cfg.(*localConfig), args)
+}
+
+func runMakeBoxcar(cmd *Command, cfg interface{}, args []string) {
+	cmdMakeBoxcar(context.Background(), cfg.(*localConfig), args)
+}
+
+func runBase(cmd *Command, cfg interface{}, args []string) {
+	println("base")
+}
+
+func main() {
+	var timeout time.Duration
+	var hoboDir string
+	var configFile string
+
+	subCommands := make(complete.Commands)
+	for _, cmd := range Commands {
+		subCommands[cmd.Name] = cmd.CompleteCommand()
+	}
+	hobo := complete.Command{
+		Sub:         subCommands,
+		GlobalFlags: CmdBase.CompleteFlags(),
+	}
+	flagSet := CmdBase.BindFlagSet(BindFlag{"timeout", &timeout},
+		BindFlag{"data-dir", &hoboDir},
+		BindFlag{"config-file", &configFile})
+
+	hoboCompleter := complete.New("hobo", hobo)
+	hoboCompleter.AddFlags(flagSet)
+	flagSet.Parse(os.Args[1:])
+
+	if hoboCompleter.Complete() {
+		return
+	}
+
+	args := flagSet.Args()
 	if len(args) == 0 {
-		flag.Usage()
+		flagSet.Usage()
 		os.Exit(1)
 	}
 
@@ -1015,13 +1191,16 @@ func main() {
 	if cmdName == "help" {
 		if len(args) > 0 {
 			cmdName = args[0]
+		} else {
+			flagSet.Usage()
+			os.Exit(1)
 		}
 	} else {
 		cfgFname := ""
 		switch cmdName {
 		case "make-boxcar", "ls":
 		default:
-			cfgFname = findConfigFile(*configFile)
+			cfgFname = findConfigFile(configFile)
 			if cfgFname == "" {
 				log.Fatalf("fill out a .hobo file")
 			}
@@ -1033,14 +1212,15 @@ func main() {
 		}
 	}
 	if cfg.AppConfig.HoboDir == "" {
-		cfg.AppConfig.HoboDir = *hoboDir
+		cfg.AppConfig.HoboDir = hoboDir
 	}
 	ctx := context.Background()
-	if *timeout > 0 {
-		ctx, _ = context.WithTimeout(ctx, *timeout)
+	if timeout > 0 {
+		ctx, _ = context.WithTimeout(ctx, timeout)
 	}
-	if cmd, ok := cmdMap[cmdName]; ok {
-		cmd(ctx, cfg, args)
+
+	if cmd, ok := CommandMap[cmdName]; ok {
+		cmd.Run(cmd, cfg, args)
 	} else {
 		flag.Usage()
 		os.Exit(1)
