@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/posener/complete"
+	"./cmdflag"
 )
 
 const (
@@ -447,16 +447,15 @@ func waitForSsh(ctx context.Context, ipAddr string) (ok bool) {
 				println("")
 			}
 			return true
-		} else {
-			print(".")
-			needNewline = true
-			time.Sleep(1 * time.Second)
 		}
+		print(".")
+		needNewline = true
+		time.Sleep(1 * time.Second)
 	}
 	return false
 }
 
-func runLs(ctx context.Context, cmd *Command, args []string) {
+func runLs(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 	fnames, err := getRunningVmxPaths(&cfg.AppConfig)
 	if err != nil {
@@ -469,7 +468,7 @@ func runLs(ctx context.Context, cmd *Command, args []string) {
 	}
 }
 
-func runStart(ctx context.Context, cmd *Command, args []string) {
+func runStart(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if os.IsNotExist(err) {
@@ -500,10 +499,10 @@ func runStart(ctx context.Context, cmd *Command, args []string) {
 	}
 }
 
-func runStop(ctx context.Context, cmd *Command, args []string) {
+func runStop(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 	var hard bool
-	flags := cmd.BindFlagSet(BindFlag{"force", &hard})
+	flags := cmd.BindFlagSet(map[string]interface{}{"force": &hard})
 	err := flags.Parse(args)
 	if err != nil {
 		log.Fatalf("failed: %v", err)
@@ -519,7 +518,7 @@ func runStop(ctx context.Context, cmd *Command, args []string) {
 	}
 }
 
-func runSuspend(ctx context.Context, cmd *Command, args []string) {
+func runSuspend(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
@@ -547,7 +546,7 @@ func prompt(msg, affirmative string) error {
 	return nil
 }
 
-func runRm(ctx context.Context, cmd *Command, args []string) {
+func runRm(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
 	if err != nil {
@@ -582,7 +581,7 @@ func archivePath(ac appConfig, bxc boxcar) string {
 }
 
 // Fetch a boxcar url and store it down to our local storage.
-func runFetch(ctx context.Context, cmd *Command, args []string) {
+func runFetch(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 
 	archive := archivePath(cfg.AppConfig, cfg.Boxcar)
@@ -663,7 +662,7 @@ func runFetch(ctx context.Context, cmd *Command, args []string) {
 // For now a clone is simply unpacking a boxcar archive into a new directory.
 // This might be less efficient if you have many of the same type of vm running,
 // but I suspect that is uncommon and likely to have other problems.
-func runClone(ctx context.Context, cmd *Command, args []string) {
+func runClone(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 
 	vm, err := newInstanceForName(cfg.AppConfig, cfg.Name)
@@ -822,7 +821,7 @@ func runClone(ctx context.Context, cmd *Command, args []string) {
 	log.Printf("Instance running guest on %s", ipAddr)
 }
 
-func runIpAddr(ctx context.Context, cmd *Command, args []string) {
+func runIpAddr(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
@@ -837,7 +836,7 @@ func runIpAddr(ctx context.Context, cmd *Command, args []string) {
 	println(ip)
 }
 
-func runSsh(ctx context.Context, cmd *Command, args []string) {
+func runSsh(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
@@ -853,7 +852,7 @@ func runSsh(ctx context.Context, cmd *Command, args []string) {
 	syscall.Exec("/usr/bin/ssh", sshArgs, os.Environ())
 }
 
-func runSshConfig(ctx context.Context, cmd *Command, args []string) {
+func runSshConfig(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 
 	vm, err := readInstanceForName(cfg.AppConfig, cfg.Name)
@@ -882,7 +881,7 @@ func runSshConfig(ctx context.Context, cmd *Command, args []string) {
 	println(strings.Join(lines, "\n"))
 }
 
-func runMakeBoxcar(ctx context.Context, cmd *Command, args []string) {
+func runMakeBoxcar(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	cfg := ctxCfg(ctx)
 
 	if len(args) != 1 {
@@ -993,22 +992,22 @@ func init() {
 	}
 }
 
-func runHobo(ctx context.Context, cmd *Command, args []string) {
+func runHobo(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	println("base")
 }
 
-var Commands = []*Command{
-	CmdHobo,
-	CmdStart,
-	CmdStop,
-	CmdSuspend,
-	CmdIpAddr,
-	CmdSsh,
-	CmdSshConfig,
-	CmdLs,
-	CmdRm,
-	CmdFetch,
-	CmdMakeBoxcar,
+var commands = []*cmdflag.Command{
+	cmdHobo,
+	cmdStart,
+	cmdStop,
+	cmdSuspend,
+	cmdIpAddr,
+	cmdSsh,
+	cmdSshConfig,
+	cmdLs,
+	cmdRm,
+	cmdFetch,
+	cmdMakeBoxcar,
 }
 
 type bootstrapCfg struct {
@@ -1017,90 +1016,90 @@ type bootstrapCfg struct {
 	configFile string
 }
 
-var CmdHobo = &Command{
+var cmdHobo = &cmdflag.Command{
 	Name:      "hobo",
 	Run:       runHobo,
 	UsageLine: "",
 	UsageLong: doc,
-	Flags: []Flag{
-		{"timeout", nil, FlagTypeDuration, 0 * time.Millisecond, "timeout for command execution"},
-		{"data-dir", complete.PredictDirs("*"), FlagTypeString, "$HOME/.hobo.d", "directory for all hobo vm data"},
-		{"config-file", complete.PredictFiles("*"), FlagTypeString, "", "local config file"},
+	Flags: []cmdflag.Flag{
+		{"timeout", cmdflag.FlagTypeDuration, 0 * time.Millisecond, "timeout for command execution", nil},
+		{"data-dir", cmdflag.FlagTypeString, "$HOME/.hobo.d", "directory for all hobo vm data", cmdflag.PredictDirs("*")},
+		{"config-file", cmdflag.FlagTypeString, "", "local config file", cmdflag.PredictFiles("*")},
 	},
 }
 
-var CmdStart = &Command{
+var cmdStart = &cmdflag.Command{
 	Name:      "start",
 	Run:       runStart,
 	UsageLine: "hobo start",
 	UsageLong: `Start a VM.`,
 }
 
-var CmdStop = &Command{
+var cmdStop = &cmdflag.Command{
 	Name:      "stop",
 	Run:       runStop,
 	UsageLine: "hobo stop",
 	UsageLong: `Stop a VM.`,
-	Flags: []Flag{
-		{"force", nil, FlagTypeBool, false, "Aggressively stop the VM."},
+	Flags: []cmdflag.Flag{
+		{"force", cmdflag.FlagTypeBool, false, "Aggressively stop the VM.", nil},
 	},
 }
 
-var CmdSuspend = &Command{
+var cmdSuspend = &cmdflag.Command{
 	Name:      "suspend",
 	Run:       runSuspend,
 	UsageLine: "hobo suspend",
 	UsageLong: `Suspend a VM.`,
 }
 
-var CmdIpAddr = &Command{
+var cmdIpAddr = &cmdflag.Command{
 	Name:      "ip-addr",
 	Run:       runIpAddr,
 	UsageLine: "hobo ip-addr",
 	UsageLong: `Return the current IP address for a VM.`,
 }
 
-var CmdSsh = &Command{
+var cmdSsh = &cmdflag.Command{
 	Name:      "ssh",
 	Run:       runSsh,
 	UsageLine: "hobo ssh",
 	UsageLong: `SSH into a VM.`,
 }
 
-var CmdSshConfig = &Command{
+var cmdSshConfig = &cmdflag.Command{
 	Name:      "ssh-config",
 	Run:       runSshConfig,
 	UsageLine: "hobo ssh-config",
 	UsageLong: `Generate an SSH config clause for a VM.`,
 }
 
-var CmdLs = &Command{
+var cmdLs = &cmdflag.Command{
 	Name:      "ls",
 	Run:       runLs,
 	UsageLine: "hobo ls",
 	UsageLong: `Show all running VMs.`,
 }
 
-var CmdRm = &Command{
+var cmdRm = &cmdflag.Command{
 	Name:      "rm",
 	Run:       runRm,
 	UsageLine: "hobo rm",
 	UsageLong: `Destroy a VM and permanently remove all data files.`,
 }
 
-var CmdFetch = &Command{
+var cmdFetch = &cmdflag.Command{
 	Name:      "fetch",
 	Run:       runFetch,
 	UsageLine: "hobo fetch",
 	UsageLong: `Pull down a boxcar archive.`,
 }
 
-var CmdMakeBoxcar = &Command{
+var cmdMakeBoxcar = &cmdflag.Command{
 	Name:      "make-boxcar",
 	Run:       runMakeBoxcar,
 	UsageLine: "hobo make-boxcar <boxcar name>.vmwarevm",
 	UsageLong: `Create a new boxcar archive.`,
-	Args:      complete.PredictDirs("*.vmwarevm"),
+	Args:      cmdflag.PredictDirs("*.vmwarevm"),
 }
 
 type contextKey string
@@ -1116,11 +1115,11 @@ func main() {
 	var hoboDir string
 	var configFile string
 
-	CmdHobo.BindFlagSet(BindFlag{"timeout", &timeout},
-		BindFlag{"data-dir", &hoboDir},
-		BindFlag{"config-file", &configFile})
+	cmdHobo.BindFlagSet(map[string]interface{}{"timeout": &timeout,
+		"data-dir":    &hoboDir,
+		"config-file": &configFile})
 
-	cmd, args := HandleCommands(Commands)
+	cmd, args := cmdflag.Parse(cmdHobo, commands)
 
 	cfgFname := ""
 	switch cmd.Name {
