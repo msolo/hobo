@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -23,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"./cmdflag"
+	"github.com/msolo/cmdflag"
 )
 
 const (
@@ -984,20 +983,9 @@ func findConfigFile(fname string) string {
 
 func init() {
 	log.SetFlags(log.Lshortfile | log.Ltime)
-
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, doc)
-		flag.PrintDefaults()
-	}
-}
-
-func runHobo(ctx context.Context, cmd *cmdflag.Command, args []string) {
-	println("base")
 }
 
 var commands = []*cmdflag.Command{
-	cmdHobo,
 	cmdStart,
 	cmdStop,
 	cmdSuspend,
@@ -1018,8 +1006,6 @@ type bootstrapCfg struct {
 
 var cmdHobo = &cmdflag.Command{
 	Name:      "hobo",
-	Run:       runHobo,
-	UsageLine: "",
 	UsageLong: doc,
 	Flags: []cmdflag.Flag{
 		{"timeout", cmdflag.FlagTypeDuration, 0 * time.Millisecond, "timeout for command execution", nil},
