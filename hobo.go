@@ -140,7 +140,7 @@ func newLocalConfigFromFile(fname string) (*localConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	vdiskmanagerPath, err := exec.LookPath("vmware-vdiskmanager")
+	vdiskmanagerPath, err := lookupExecutable("vmware-vdiskmanager")
 	if err != nil {
 		return nil, err
 	}
