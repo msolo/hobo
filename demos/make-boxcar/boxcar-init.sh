@@ -43,7 +43,6 @@ apt-get -qq upgrade
 # apt-get -qq -y --fix-missing --no-install-recommends -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew install $DEB_LIST
 
 # Start removing unnecessary files
-purge-old-kernels -y --keep 1
 apt-get remove linux-headers-* linux-firmware
 apt-get -qqy autoremove --purge
 apt-get autoclean -qqy
