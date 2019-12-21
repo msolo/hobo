@@ -87,16 +87,16 @@ For example, looking at our demo installation of Ubuntu 16.04 we can see a big d
 ```
 
 ## Create A VM Config
-Create a .hobo file that references the boxcar archive and gives it a local name.
+Create a `.hobo` file that references the boxcar archive and gives it a local name.
 
-You can use BootstrapCmdLines to run a series of bash commands inside the guest after cloning is complete. These should be idempotent, but generally hobo guarantees that these commands will only be run once.
+You can use `BootstrapCmdLines` to run a series of bash commands inside the guest after cloning is complete. These should be idempotent, but generally hobo guarantees that these commands will only be run once.
 
 ```javascript
 {
   "Name": "demo",
   "Boxcar": {
     "Name": "demo-boxcar",
-    "Url": "http://localhost/demo-boxcar-v3.0.0.vmwarevm.tgz",
+    "Url": "file:///Users/nobody/demo-boxcar-v3.0.0.vmwarevm.tgz",
     "Version": "3.0.0",
     "Sha256": "c9d99d83b26aa17509c4e2e2f7e7f2b59c48cf9fdfffbf75ec2c35d412d87a41",
     "BootstrapCmdLines": [
