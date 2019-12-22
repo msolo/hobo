@@ -903,7 +903,11 @@ func runSshConfig(ctx context.Context, cmd *cmdflag.Command, args []string) {
 	getter := func(k string) string { return vars[k] }
 	header := os.Expand("Host ${name} hobo-${name} ${ip_addr}", getter)
 	lines := make([]string, 0, 16)
-	for k, v := range vm.sshConfigMap() {
+
+	cm := vm.sshConfigMap()
+	cm["Hostname"] = vm.vmConfig.IpAddr
+
+	for k, v := range cm {
 		lines = append(lines, "  "+k+" "+v)
 	}
 	sort.Strings(lines)
