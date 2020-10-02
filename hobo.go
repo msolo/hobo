@@ -684,7 +684,7 @@ func runFetch(ctx context.Context, cmd *cmdflag.Command, args []string) {
 		log.Fatalf("failed to fetch: signature mismatch %s != %s", cfg.Boxcar.Sha256, sha256sum)
 	} else {
 		if err := os.Rename(tmpArchivePath, archive); err != nil {
-			log.Fatal("failed to fetch: %s", err)
+			log.Fatalf("failed to fetch: %s", err)
 		}
 	}
 }
